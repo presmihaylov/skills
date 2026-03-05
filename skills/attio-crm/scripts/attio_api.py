@@ -617,6 +617,157 @@ class AttioClient:
         return self._request("POST", "/objects/deals/records/query", data=body).get("data", [])
 
     # =========================================================================
+    # COMPOUND METHODS
+    # =========================================================================
+
+    def get_company_summary(
+        self,
+        record_id: str = None,
+        name_query: str = None,
+        notes_limit: int = 5,
+        deals_limit: int = 10
+    ) -> dict:
+        """
+        Get a full company summary in one call: company details, deals, notes, and tasks.
+        Accepts either a record_id or a name_query (searches and picks the first match).
+
+        Args:
+            record_id: UUID of the company record (use this OR name_query)
+            name_query: Company name to search for (uses first match)
+            notes_limit: Max notes to return
+            deals_limit: Max deals to return
+
+        Returns:
+            Dict with company, deals, notes, and tasks
+        """
+        # Resolve company record
+        if not record_id and not name_query:
+            raise ValueError("Provide either record_id or name_query")
+
+        company = None
+        if record_id:
+            company = self.get_company(record_id)
+        else:
+            results = self.search_companies(name_query=name_query, limit=1)
+            if not results:
+                return {
+                    "message": f"No company matching '{name_query}' found",
+                    "company": None,
+                    "deals": [],
+                    "notes": [],
+                    "tasks": []
+                }
+            company = results[0]
+            record_id = company.get("id", {}).get("record_id")
+
+        company_name = self.get_company_name(company)
+
+        # Fetch deals - search all deals then filter by associated company
+        all_deals = self.search_deals(limit=deals_limit)
+        company_deals = []
+        for deal in all_deals:
+            # Check if deal is linked to this company via associated_company or similar
+            values = deal.get("values", {})
+            # Attio links companies to deals via a relation field
+            assoc = values.get("associated_company", values.get("company", []))
+            for link in assoc:
+                target = link.get("target_record_id", "")
+                if target == record_id:
+                    company_deals.append(deal)
+                    break
+
+        # Fetch notes
+        notes = self.list_notes(
+            parent_record_id=record_id,
+            parent_object="companies",
+            limit=notes_limit
+        )
+
+        # Fetch tasks linked to this company
+        tasks = []
+        try:
+            tasks_response = self._request(
+                "POST", "/objects/tasks/records/query",
+                data={
+                    "limit": 10,
+                    "filter": {
+                        "linked_company": {"$eq": record_id}
+                    }
+                }
+            )
+            tasks = tasks_response.get("data", [])
+        except AttioAPIError:
+            # Tasks object may not exist or filter may not match - try without filter
+            try:
+                tasks_response = self._request(
+                    "POST", "/objects/tasks/records/query",
+                    data={"limit": 25}
+                )
+                all_tasks = tasks_response.get("data", [])
+                # Filter tasks linked to this company client-side
+                for task in all_tasks:
+                    values = task.get("values", {})
+                    for field_name in ["linked_company", "company", "linked_record", "associated_company"]:
+                        links = values.get(field_name, [])
+                        for link in links:
+                            if link.get("target_record_id") == record_id:
+                                tasks.append(task)
+                                break
+            except AttioAPIError:
+                pass  # Tasks object may not exist in this workspace
+
+        # Build summary
+        summary = {
+            "company": {
+                "record_id": record_id,
+                "name": company_name,
+                "domain": self.get_company_domain(company),
+                "web_url": company.get("web_url"),
+                "values": company.get("values", {})
+            },
+            "deals": [],
+            "notes": [],
+            "tasks": []
+        }
+
+        for deal in company_deals:
+            dv = deal.get("values", {})
+            deal_name = dv.get("name", [{}])[0].get("value", "Unnamed") if dv.get("name") else "Unnamed"
+            deal_stage = dv.get("stage", [{}])[0].get("status", {}).get("title", "Unknown") if dv.get("stage") else "Unknown"
+            summary["deals"].append({
+                "record_id": deal.get("id", {}).get("record_id"),
+                "name": deal_name,
+                "stage": deal_stage,
+                "values": dv
+            })
+
+        for note in notes:
+            summary["notes"].append({
+                "note_id": note.get("id", {}).get("note_id"),
+                "title": note.get("title", "Untitled"),
+                "created_at": note.get("created_at")
+            })
+
+        for task in tasks:
+            tv = task.get("values", {})
+            task_name = tv.get("name", [{}])[0].get("value", "Unnamed") if tv.get("name") else "Unnamed"
+            task_status = tv.get("status", [{}])[0].get("status", {}).get("title", "Unknown") if tv.get("status") else "Unknown"
+            due = tv.get("due_date", [{}])[0].get("value") if tv.get("due_date") else None
+            assignee_vals = tv.get("assignees", tv.get("assignee", []))
+            assignee = None
+            if assignee_vals:
+                assignee = assignee_vals[0].get("referenced_actor_id") or assignee_vals[0].get("target_record_id")
+            summary["tasks"].append({
+                "record_id": task.get("id", {}).get("record_id"),
+                "name": task_name,
+                "status": task_status,
+                "due_date": due,
+                "assignee": assignee
+            })
+
+        return summary
+
+    # =========================================================================
     # UTILITY METHODS
     # =========================================================================
 
@@ -716,6 +867,13 @@ def main():
     search_deals_parser = subparsers.add_parser("search-deals", help="Search deals by name")
     search_deals_parser.add_argument("query", nargs="?", default=None, help="Deal name to search")
     search_deals_parser.add_argument("--limit", type=int, default=10, help="Max results")
+
+    # Get company summary command
+    summary_parser = subparsers.add_parser("get-company-summary",
+        help="Get full company summary (details, deals, notes, tasks) in one call")
+    summary_parser.add_argument("query", help="Company name to search or record UUID")
+    summary_parser.add_argument("--notes-limit", type=int, default=5, help="Max notes to return")
+    summary_parser.add_argument("--deals-limit", type=int, default=10, help="Max deals to return")
 
     args = parser.parse_args()
 
@@ -832,6 +990,24 @@ def main():
                 name = name_vals[0].get("value", "Unknown") if name_vals else "Unknown"
                 record_id = d.get("id", {}).get("record_id", "N/A")
                 print(f"  - {name} ({record_id})")
+
+        elif args.command == "get-company-summary":
+            query = args.query
+            # Detect if query is a UUID (record_id) or a name
+            is_uuid = bool(re.match(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$', query))
+            if is_uuid:
+                summary = client.get_company_summary(
+                    record_id=query,
+                    notes_limit=args.notes_limit,
+                    deals_limit=args.deals_limit
+                )
+            else:
+                summary = client.get_company_summary(
+                    name_query=query,
+                    notes_limit=args.notes_limit,
+                    deals_limit=args.deals_limit
+                )
+            print(json.dumps(summary, indent=2, default=str))
 
         return 0
 

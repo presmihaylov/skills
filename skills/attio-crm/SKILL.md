@@ -14,6 +14,10 @@ Interact with Attio CRM to manage companies, contacts, notes, and deals programm
 ```
 What do you need?
 │
+├── Full company overview (deals, notes, tasks in one call)
+│   └── Script: scripts/attio_api.py get-company-summary "Company Name"
+│   └── PREFERRED for "what's the status on X" type questions
+│
 ├── Get/search companies
 │   └── references/api-guide.md
 │   └── Script: scripts/attio_api.py get-company / search-companies
@@ -53,6 +57,15 @@ Get your API key: Attio Settings → Developers → API Keys
 | `note:write` | Create and delete notes |
 
 ## Common Usage
+
+### Get Company Summary (recommended for status queries)
+```bash
+# By company name - returns company details, deals, notes, and tasks in one call
+python scripts/attio_api.py get-company-summary "Cursor"
+
+# By record UUID
+python scripts/attio_api.py get-company-summary e26784a0-0933-45f2-99ea-e432ac41142e
+```
 
 ### Search Companies
 ```bash

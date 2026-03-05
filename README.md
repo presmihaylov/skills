@@ -20,6 +20,7 @@ These skills are designed for use with Nairi agents via the [skills marketplace]
 ## Changes from upstream
 
 ### attio-crm
+- Added `get-company-summary` compound command - fetches company details, deals, notes, and tasks in a single invocation (reduces agent turns from 5+ to 1)
 - Added `get-deal` and `search-deals` commands
 - Added `--parent-object` flag to `list-notes` for deal notes support
 
