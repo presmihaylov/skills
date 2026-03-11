@@ -7,6 +7,7 @@ Custom and forked skills for [Nairi](https://nairi.ai) agents.
 | Skill | Description | Source |
 |-------|-------------|--------|
 | [attio-crm](skills/attio-crm/) | Attio CRM operations for companies, contacts, deals, and notes | Fork of [casper-studios/casper-marketplace](https://github.com/casper-studios/casper-marketplace) |
+| [intercom](skills/intercom/) | Intercom API - conversation search, contact lookup, ticket search, tags | Custom |
 | [plain-support](skills/plain-support/) | Plain customer support platform - customers, threads, timeline, help center | Fork of [team-plain/skills](https://github.com/team-plain/skills) |
 
 ## Usage
