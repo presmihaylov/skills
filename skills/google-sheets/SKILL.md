@@ -1,6 +1,7 @@
 ---
 name: google-sheets
 description: Read, write, and manage Google Sheets spreadsheets using the REST API. Use this skill when the user asks to read or update spreadsheet data, search for spreadsheets, manage sheet tabs, or format cells. Triggers on Google Sheets, spreadsheet, or sheet-related requests.
+allowed-tools: Bash
 ---
 
 # Google Sheets
@@ -50,18 +51,28 @@ What do you need?
 
 ## Environment Setup
 
-```bash
-# Required — base64-encoded JSON content of a Google Cloud service account key
-# Generate with: cat service-account.json | base64 -w 0
-GOOGLE_SERVICE_ACCOUNT_KEY='eyJ0eXBlIjoic2VydmljZV9hY2NvdW50Iiwi...'
-```
+This skill requires one environment variable:
 
-The service account needs:
-- **Sheets API** enabled in the Google Cloud project
-- **Drive API** enabled (for the `search` command only)
-- The service account email shared as **Editor** on target spreadsheets
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | Yes | Base64-encoded JSON content of a Google Cloud service account key |
 
-Generate a key: Google Cloud Console > IAM & Admin > Service Accounts > Keys > Add Key > JSON. Then base64-encode it before setting the env var.
+### Step-by-step setup
+
+1. **Create a service account** in Google Cloud Console (IAM & Admin > Service Accounts)
+2. **Enable APIs** in the same GCP project:
+   - Google Sheets API (required)
+   - Google Drive API (required for the `search` command)
+3. **Create a JSON key** for the service account (Keys > Add Key > JSON) — this downloads a `.json` file
+4. **Base64-encode** the key file:
+   ```bash
+   cat service-account.json | base64 -w 0
+   ```
+5. **Set the env var** on your Nairi agent container:
+   - Go to the Nairi dashboard > your agent > Environment Variables
+   - Add `GOOGLE_SERVICE_ACCOUNT_KEY` with the base64-encoded value
+   - Or store it as a vault secret and reference it
+6. **Share target spreadsheets** with the service account email (found in the JSON key as `client_email`, looks like `name@project.iam.gserviceaccount.com`) — add it as an Editor for read/write access
 
 ## Common Usage
 
