@@ -6,7 +6,8 @@ Calls the BigQuery v2 REST API directly using a Google Cloud service account JSO
 No SDK dependencies — uses only stdlib (urllib, json, base64).
 
 Authentication:
-    Set GOOGLE_SERVICE_ACCOUNT_KEY to the raw JSON content of your service account key file.
+    Set GOOGLE_SERVICE_ACCOUNT_KEY to the base64-encoded JSON content of your service account key file.
+    (Raw JSON is also accepted for backwards compatibility.)
     The script exchanges it for a short-lived access token via Google's OAuth2 endpoint.
 
 Usage:
@@ -288,13 +289,18 @@ def _load_service_account() -> dict:
     raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
     if not raw:
         print("Error: GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not set.", file=sys.stderr)
-        print("Set it to the full JSON content of your service account key file.", file=sys.stderr)
+        print("Set it to the base64-encoded JSON content of your service account key file.", file=sys.stderr)
         sys.exit(1)
+    # Decode from base64 first, fall back to raw JSON for backwards compatibility
     try:
-        sa = json.loads(raw)
-    except json.JSONDecodeError:
-        print("Error: GOOGLE_SERVICE_ACCOUNT_KEY is not valid JSON.", file=sys.stderr)
-        sys.exit(1)
+        decoded = base64.b64decode(raw).decode("utf-8")
+        sa = json.loads(decoded)
+    except Exception:
+        try:
+            sa = json.loads(raw)
+        except json.JSONDecodeError:
+            print("Error: GOOGLE_SERVICE_ACCOUNT_KEY is not valid base64-encoded JSON or raw JSON.", file=sys.stderr)
+            sys.exit(1)
     required = ["client_email", "private_key", "project_id"]
     for field in required:
         if field not in sa:
