@@ -8,6 +8,7 @@ Custom and forked skills for [Nairi](https://nairi.ai) agents.
 |-------|-------------|--------|
 | [attio-crm](skills/attio-crm/) | Attio CRM operations for companies, contacts, deals, and notes | Fork of [casper-studios/casper-marketplace](https://github.com/casper-studios/casper-marketplace) |
 | [bigquery](skills/bigquery/) | Query and explore Google BigQuery via REST API — zero SDK dependencies, base64-encoded service account key | Custom |
+| [google-sheets](skills/google-sheets/) | Read, write, and manage Google Sheets via REST API — zero SDK dependencies, base64-encoded service account key | Custom |
 | [intercom](skills/intercom/) | Intercom API - conversation search, contact lookup, ticket search, tags | Custom |
 | [plain-support](skills/plain-support/) | Plain customer support platform - customers, threads, timeline, help center (read-mostly) | Fork of [team-plain/skills](https://github.com/team-plain/skills) |
 | [plain-support-rw](skills/plain-support-rw/) | Plain customer support platform - full read-write access for workspace setup and management | Fork of plain-support with all mutations |
