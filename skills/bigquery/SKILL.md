@@ -31,13 +31,16 @@ What do you need?
 ## Environment Setup
 
 ```bash
-# Required — set to the full JSON content of a Google Cloud service account key
-GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'
+# Required — set to the base64-encoded JSON content of a Google Cloud service account key
+# Generate with: cat service-account.json | base64 -w 0
+GOOGLE_SERVICE_ACCOUNT_KEY='eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjdF9pZCI6Ii4uLiIsInByaXZhdGVfa2V5IjoiLi4uIiwiY2xpZW50X2VtYWlsIjoiLi4uIn0='
 ```
+
+The value must be the base64-encoded version of the full service account JSON key file. This avoids shell escaping issues with raw JSON containing special characters.
 
 The service account needs the `BigQuery User` role (`roles/bigquery.user`) at minimum. For write access, add `BigQuery Data Editor`.
 
-Generate a key: Google Cloud Console > IAM & Admin > Service Accounts > Keys > Add Key > JSON.
+Generate a key: Google Cloud Console > IAM & Admin > Service Accounts > Keys > Add Key > JSON. Then base64-encode it before setting the env var.
 
 ## Common Usage
 
@@ -100,7 +103,7 @@ The script handles async queries automatically. If BigQuery returns `jobComplete
 
 ## Security Notes
 
-- The `GOOGLE_SERVICE_ACCOUNT_KEY` contains a private key — store it in a vault, never in source control
+- The `GOOGLE_SERVICE_ACCOUNT_KEY` contains a base64-encoded private key — store it in a vault, never in source control
 - The script exchanges the key for a short-lived access token (1 hour) on each invocation
 - No tokens or keys are cached to disk
 - All API calls use HTTPS
@@ -109,7 +112,7 @@ The script handles async queries automatically. If BigQuery returns `jobComplete
 ## Troubleshooting
 
 ### "GOOGLE_SERVICE_ACCOUNT_KEY is not set"
-Set the environment variable to the full JSON content of the service account key file. On Nairi, store it as a vault secret.
+Set the environment variable to the base64-encoded JSON content of the service account key file (`cat key.json | base64 -w 0`). On Nairi, store it as a vault secret.
 
 ### "403 Access Denied"
 The service account lacks BigQuery permissions. Assign `BigQuery User` role in Google Cloud IAM.
