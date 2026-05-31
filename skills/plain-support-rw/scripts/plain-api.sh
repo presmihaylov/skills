@@ -241,6 +241,8 @@ thread_list() {
     local status_filter=""
     local priority_filter=""
     local customer_filter=""
+    local labels_filter=""
+    local assigned_filter=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -252,6 +254,8 @@ thread_list() {
                 shift 2 ;;
             --priority) priority_filter="$(priority_to_number "$2")"; shift 2 ;;
             --customer) customer_filter="$2"; shift 2 ;;
+            --labels) labels_filter="$2"; shift 2 ;;
+            --assigned-to-user) assigned_filter="$2"; shift 2 ;;
             *) shift ;;
         esac
     done
@@ -266,6 +270,16 @@ thread_list() {
     if [[ -n "$customer_filter" ]]; then
         filter_parts+=("\"customerIds\": [\"$customer_filter\"]")
     fi
+    if [[ -n "$labels_filter" ]]; then
+        local labels_json
+        labels_json=$(jq -c -n --arg s "$labels_filter" '$s | split(",")')
+        filter_parts+=("\"labelTypeIds\": $labels_json")
+    fi
+    if [[ -n "$assigned_filter" ]]; then
+        local assigned_json
+        assigned_json=$(jq -c -n --arg s "$assigned_filter" '$s | split(",")')
+        filter_parts+=("\"assignedToUser\": $assigned_json")
+    fi
 
     local filter="{}"
     if [[ ${#filter_parts[@]} -gt 0 ]]; then
@@ -273,7 +287,7 @@ thread_list() {
     fi
 
     local result
-    result=$(gql "query(\$first: Int!, \$filters: ThreadsFilter) { threads(first: \$first, filters: \$filters) { edges { node { id title status priority customer { id fullName } assignedTo { ... on User { id fullName } ... on MachineUser { id fullName } } createdAt { iso8601 } } } pageInfo { hasNextPage endCursor } totalCount } }" \
+    result=$(gql "query(\$first: Int!, \$filters: ThreadsFilter) { threads(first: \$first, filters: \$filters) { edges { node { id title status priority customer { id fullName email { email } } assignedTo { ... on User { id fullName } ... on MachineUser { id fullName } } labels { id labelType { id name } } createdAt { iso8601 } } } pageInfo { hasNextPage endCursor } totalCount } }" \
         "{\"first\": $first, \"filters\": $filter}")
     format_response "$result" "threads" | map_priorities
 }
@@ -568,10 +582,12 @@ thread_set_priority() {
 thread_assign() {
     local thread_id=""
     local user_id=""
+    local machine_user_id=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
             --user) user_id="$2"; shift 2 ;;
+            --machine-user) machine_user_id="$2"; shift 2 ;;
             *) thread_id="$1"; shift ;;
         esac
     done
@@ -580,10 +596,21 @@ thread_assign() {
         echo "Error: thread_id is required" >&2
         exit 1
     fi
+    if [[ -n "$user_id" ]] && [[ -n "$machine_user_id" ]]; then
+        echo "Error: provide either --user or --machine-user, not both" >&2
+        exit 1
+    fi
+    if [[ -z "$user_id" ]] && [[ -z "$machine_user_id" ]]; then
+        echo "Error: --user or --machine-user is required" >&2
+        exit 1
+    fi
 
-    local input="{\"threadId\": \"$thread_id\""
-    [[ -n "$user_id" ]] && input="$input, \"userId\": \"$user_id\""
-    input="$input}"
+    local input
+    if [[ -n "$user_id" ]]; then
+        input=$(jq -n --arg tid "$thread_id" --arg uid "$user_id" '{threadId: $tid, userId: $uid}')
+    else
+        input=$(jq -n --arg tid "$thread_id" --arg muid "$machine_user_id" '{threadId: $tid, machineUserId: $muid}')
+    fi
 
     gql 'mutation($input: AssignThreadInput!) { assignThread(input: $input) { thread { id assignedTo { ... on User { id fullName } ... on MachineUser { id fullName } } } error { message code } } }' \
         "{\"input\": $input}"
