@@ -709,16 +709,27 @@ thread_send_chat() {
 
 thread_send_email() {
     local customer_id=""
+    local customer_email=""
     local subject=""
     local text=""
     local text_file=""
+    local markdown=""
+    local thread_id=""
+    local from_email=""
+    local from_name=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
             --customer) customer_id="$2"; shift 2 ;;
+            --customer-id) customer_id="$2"; shift 2 ;;
+            --customer-email) customer_email="$2"; shift 2 ;;
             --subject) subject="$2"; shift 2 ;;
             --text) text="$2"; shift 2 ;;
             --text-file) text_file="$2"; shift 2 ;;
+            --markdown) markdown="$2"; shift 2 ;;
+            --thread-id) thread_id="$2"; shift 2 ;;
+            --from-email) from_email="$2"; shift 2 ;;
+            --from-name) from_name="$2"; shift 2 ;;
             *) shift ;;
         esac
     done
@@ -728,17 +739,71 @@ thread_send_email() {
         text=$(cat "$text_file")
     fi
 
-    if [[ -z "$customer_id" ]] || [[ -z "$subject" ]] || [[ -z "$text" ]]; then
-        echo "Error: --customer, --subject, and --text (or --text-file) are required" >&2
+    if [[ -z "$customer_id" ]] && [[ -z "$customer_email" ]]; then
+        echo "Error: --customer-id (alias --customer) or --customer-email is required" >&2
         exit 1
+    fi
+    if [[ -z "$subject" ]] || [[ -z "$text" ]]; then
+        echo "Error: --subject and --text (or --text-file) are required" >&2
+        exit 1
+    fi
+    if [[ -z "$from_email" ]] && [[ -n "$from_name" ]]; then
+        echo "Error: --from-name requires --from-email" >&2
+        exit 1
+    fi
+
+    if [[ -z "$customer_id" ]]; then
+        local lookup
+        lookup=$(gql 'query($email: String!) { customerByEmail(email: $email) { id } }' \
+            "{\"email\": \"$customer_email\"}")
+        customer_id=$(echo "$lookup" | jq -r '.data.customerByEmail.id // empty')
+        if [[ -z "$customer_id" ]]; then
+            echo "Error: Could not find customer for email: $customer_email" >&2
+            echo "$lookup" | jq . >&2
+            exit 1
+        fi
     fi
 
     local input
     input=$(jq -n --arg cid "$customer_id" --arg subj "$subject" --arg text "$text" \
         '{customerId: $cid, subject: $subj, textContent: $text}')
+    [[ -n "$markdown" ]] && input=$(echo "$input" | jq --arg md "$markdown" '. + {markdownContent: $md}')
+    [[ -n "$thread_id" ]] && input=$(echo "$input" | jq --arg tid "$thread_id" '. + {threadId: $tid}')
 
-    gql 'mutation($input: SendNewEmailInput!) { sendNewEmail(input: $input) { email { id } error { message code } } }' \
-        "{\"input\": $(echo "$input")}"
+    if [[ -n "$from_email" ]]; then
+        local from_obj
+        if [[ -n "$from_name" ]]; then
+            from_obj=$(jq -n --arg name "$from_name" --arg email "$from_email" '{name: $name, email: $email}')
+        else
+            from_obj=$(jq -n --arg email "$from_email" '{email: $email}')
+        fi
+        input=$(echo "$input" | jq --argjson from "$from_obj" '. + {fromAlternateSupportEmail: $from}')
+    fi
+
+    local query='mutation SendNewEmail($input: SendNewEmailInput!) { sendNewEmail(input: $input) { email { id subject thread { id title status } from { name email } to { name email } createdAt { iso8601 } } error { message code fields { field message type } } } }'
+    local variables
+    variables=$(jq -n --argjson input "$input" '{input: $input}')
+
+    local result
+    result=$(curl -s -X POST "$API_URL" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $PLAIN_API_KEY" \
+        -d "$(jq -n --arg q "$query" --argjson v "$variables" '{query: $q, variables: $v}')")
+
+    local new_thread_id
+    new_thread_id=$(echo "$result" | jq -r '.data.sendNewEmail.email.thread.id // empty')
+    if [[ -n "$new_thread_id" ]]; then
+        local workspace_id
+        workspace_id=$(gql '{ myWorkspace { id } }' '{}' | jq -r '.data.myWorkspace.id // empty')
+        if [[ -n "$workspace_id" ]]; then
+            local link="https://app.plain.com/workspace/${workspace_id}/thread/${new_thread_id}"
+            echo "$result" | jq --arg link "$link" '.link = $link'
+        else
+            echo "$result"
+        fi
+    else
+        echo "$result"
+    fi
 }
 
 # ============================================================================

@@ -80,7 +80,17 @@ scripts/plain-api.sh thread reply th_01ABC... --text "We're looking into this"
 scripts/plain-api.sh thread send-chat th_01ABC... --text "Quick update: fix deployed"
 
 # Send email to customer (creates new thread)
-scripts/plain-api.sh thread send-email --customer c_01ABC... --subject "Welcome!" --text "Thanks for signing up"
+scripts/plain-api.sh thread send-email --customer-id c_01ABC... --subject "Welcome!" --text "Thanks for signing up"
+
+# Resolve recipient by email instead of customer ID
+scripts/plain-api.sh thread send-email --customer-email user@example.com --subject "Welcome!" --text-file /tmp/body.txt
+
+# Send from a specific alternate support address (must be configured in the Plain workspace)
+scripts/plain-api.sh thread send-email --customer-email user@example.com --subject "Welcome!" \
+  --text-file /tmp/body.txt --from-email pres@nairi.ai --from-name "Pres"
+
+# Append the email to an existing thread instead of creating a new one
+scripts/plain-api.sh thread send-email --customer-id c_01ABC... --subject "Re: Welcome" --text "Following up" --thread-id th_01XYZ...
 
 # Add internal note (not visible to customer)
 scripts/plain-api.sh thread note th_01ABC... --text "Escalated to engineering"
